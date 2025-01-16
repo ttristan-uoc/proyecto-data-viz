@@ -1,0 +1,172 @@
+---
+title: 'Proyecto de Visualización: Conflict Data'
+author: "Tomás Tristán Romero"
+date: "Enero 2025"
+output:
+  html_document:
+    highlight: default
+    number_sections: yes
+    theme: cosmo
+    toc: yes
+    toc_depth: 2
+  word_document: default
+  pdf_document:
+    highlight: pygments
+    toc: yes
+    number_sections: yes
+    latex_engine: xelatex
+    extra_dependencies: ["babel", "setspace"]
+lang: "es-ES"
+---
+
+# Carga de datos y exploración inicial
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+data <- read.csv("deaths-in-armed news v2.csv")
+colnames(data) <- c('Entity', 'Year', 'Unilateral', 'Noestatal', 'Intraestatal', 'Extrasistémica', 'Interestatal')
+summary(data)
+head(data)
+data <- subset(data, select = -Extrasistémica)
+```
+
+El dataset viene descrito por las siguientes variables:
+
++ Región (Entity): región del mundo. Toma los valores: Africa, Americas, Asia and Oceania, Europe, Middle East y World. 
++ Año (Year): desde 1989 hasta 2023.
++ Unilateral (One-sided violence): número de muertes por "one-sided violence", es decir, uso de fuerza armada por el gobierno de un estado o un grupo formalmente organizado contra civiles que resulta en al menos 25 muertes.
++ Noestatal (Non-state): número de muertes por "non-state conflict", es decir, uso de fuerza armada entre dos grupos organizados, en los que ninguno es el gobierno de un estado con al menos 25 muertes en batalla.
++ Intraestatal (Intrastate): número de muertes por conflicto intraestatal, es decir, entre un gobierno y un partido no gubernamental, sin interferencia de otros países.
++ Extrasistémica (Extrasystemic): número de muertes por conflicto extrasistmético, es decir, entre un estado y un grupo no estatal fuera de su propio territorio.
++ Interestatal (Interstate): número de muertes por conflicto interestatal, es decir, entre dos o más gobiernos. 
+
+# Cantidad de muertes en el mundo por año
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(tidyr)
+library(plotly)
+library(extrafont)
+
+data_summary <- data %>%
+  group_by(Year) %>%
+  summarise(
+    Unilateral = sum(Unilateral, na.rm = TRUE),
+    Noestatal = sum(Noestatal, na.rm = TRUE),
+    Intraestatal = sum(Intraestatal, na.rm = TRUE),
+    Interestatal = sum(Interestatal, na.rm = TRUE)
+  )
+
+data_long <- tidyr::pivot_longer(
+  data_summary,
+  cols = -Year,
+  names_to = "Conflict_Type",
+  values_to = "Deaths"
+)
+
+fig <- plot_ly(
+  data = data_long,
+  x = ~Year,
+  y = ~Deaths,
+  type = 'bar',
+  mode = 'lines+markers',
+  color = ~Conflict_Type,
+  hoverinfo = "text",
+  text = ~paste("Año:", Year, "<br>Muertes:", Deaths, "<br>Tipo de Conflicto:", Conflict_Type)
+)
+
+fig <- fig %>%
+  layout(
+    barmode = 'stack',
+    title = "Muertes por Año en Diferentes Tipos de Conflictos",
+    xaxis = list(title = "Año"),
+    yaxis = list(title = "Muertes"),
+    font  = list(family= "Corbel",
+                  size = 15,
+                  color= "#2F4F4F",
+                  variant="small-caps"),
+    margin = list(t = 100, r = 100, l = 100, b = 100)
+  )
+
+fig
+```
+
+# Conflictos por año y región del mundo
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+data_long <- data %>%
+  pivot_longer(
+    cols = -c(Year, Entity),
+    names_to = "Conflict_Type",
+    values_to = "Deaths"
+  )
+
+traces <- list()
+for (region in unique(data_long$Entity)) {
+  for (conflict in unique(data_long$Conflict_Type)) {
+    trace <- list(
+      x = data_long$Year[data_long$Entity == region & data_long$Conflict_Type == conflict],
+      y = data_long$Deaths[data_long$Entity == region & data_long$Conflict_Type == conflict],
+      type = 'scatter',
+      mode = 'lines+markers',
+      name = paste(region, "-", conflict),
+      visible = ifelse(region == unique(data_long$Entity)[1], TRUE, FALSE)
+    )
+    traces <- append(traces, list(trace))
+  }
+}
+
+fig <- plot_ly()
+for (trace in traces) {
+  fig <- fig %>% add_trace(x = trace$x, y = trace$y, type = trace$type, mode = trace$mode,
+                           name = trace$name, visible = trace$visible)
+}
+
+buttons <- lapply(unique(data_long$Entity), function(region) {
+  visible <- rep(FALSE, length(traces))
+  for (i in seq_along(traces)) {
+    if (grepl(region, traces[[i]]$name)) {
+      visible[i] <- TRUE
+    }
+  }
+  list(
+    method = "update",
+    args = list(list(visible = visible), list(title = paste("Región seleccionada:", region))),
+    label = region
+  )
+})
+
+all_visible <- rep(TRUE, length(traces))
+buttons <- append(
+  list(list(
+    method = "update",
+    args = list(list(visible = all_visible), list(title = "Todas las Regiones")),
+    label = "Todas las Regiones"
+  )),
+  buttons
+)
+
+fig <- fig %>%
+  layout(
+    title = "Evolución de Muertes por Tipo de Conflicto en Diferentes Regiones",
+    xaxis = list(title = "Año"),
+    yaxis = list(title = "Muertes"),
+    font  = list(family= "Corbel",
+              size = 15,
+              color= "#2F4F4F"),
+    updatemenus = list(
+      list(
+        type = "dropdown",
+        buttons = buttons,
+        x = 1.25,
+        xanchor = 'right',
+        y = 1.1
+      )
+    ),
+    margin = list(t = 100, r = 150, l = 100, b = 100)
+  )
+
+fig
+
+```
+
+
+
